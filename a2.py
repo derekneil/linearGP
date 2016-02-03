@@ -13,50 +13,36 @@ from numpy import genfromtxt
 
 DEBUG = False
 
-initialSizeOfIndividual = 25 #lines of Rx = Rx op Ry
-maxSizeOfIndividual = 250
+sizeOfIndividual = 25 #lines of Rx = Rx op Ry
 populationSize = 40
-crossoverProb = 0.8
 mutationProb = 0.8
-generations = 9000
+generations = 100
 filename = 'iris_rescaled.csv'
-selection = 'tournament'
-replaced = 2
-# selection = 'proportional'
+selection = 'proportional'
+replaced = populationSize
 
 args = len(sys.argv)
 if args >= 2:
     arg = sys.argv[1].lower().strip()
     if arg in 'help usage':
-        print '\tusage: prgm.py [tournament/proportional [dataset.csv [tourGenerations]]]'
-    if arg in 'tournament proportional':
-        selection = arg
-if args >= 3:
-    arg = sys.argv[2].lower().strip()
+        print '\tusage: prgm.py [dataset.csv [tourGenerations]]'
     if '.csv' in arg:
         filename = arg
-if args >= 4:
+if args >= 3:
     try:
         arg = sys.argv[3]
         generations = int(arg)
     except:
         pass
-            
-if selection in 'proportional':
-    selection = 'proportional'
-    generations = int(float(replaced)/populationSize * generations)
-    replaced = populationSize
-    
-else:
-    selection = 'tournament'
 
-fullDataset = genfromtxt(filename, delimiter=',')
-outputRegisters = numpy.unique(fullDataset[:,numpy.size(fullDataset[0])-1:].flatten()).size
+dataset = genfromtxt(filename, delimiter=',')
+outputRegisters = numpy.unique(dataset[:,numpy.size(dataset[0])-1:].flatten()).size
 
 
 # In[2]:
 
-# source: http://www.bhyuu.com/numpy-how-to-split-partition-a-dataset-array-into-training-and-test-datasets-for-e-g-cross-validation/
+# source: http://www.bhyuu.com/numpy-how-to-split-partition-a-dataset
+# -array-into-training-and-test-datasets-for-e-g-cross-validation/
 def get_train_test_inds(y,train=0.8):
     '''Generates indices, making random stratified split into training set and testing sets
     with proportions 'train' and (1-train) of initial sample.
@@ -79,12 +65,9 @@ def get_train_test_inds(y,train=0.8):
 
     return train_inds, test_inds
 
-train_inds, test_inds = get_train_test_inds(fullDataset[:,-1:].flatten())
-train = fullDataset[train_inds]
-test  = fullDataset[test_inds]
-
-#use global dataset variable to hold either training or test data
-dataset = train[::]
+train_inds, test_inds = get_train_test_inds(dataset[:,-1:].flatten())
+train = dataset[train_inds]
+test  = dataset[test_inds]
 
 
 # In[3]:
@@ -99,7 +82,7 @@ def show(old, new=None): #debugging/output worker function
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         
-        if new != None:
+        if new != None: #print side by side individuals
             buffer = ' ' * (len(old[0])+len(old[0])-1+2)
             for i in range(max(len(old),len(new))):
                 a , b = buffer, buffer
@@ -120,7 +103,7 @@ def show(old, new=None): #debugging/output worker function
                 print 'right', prettyFitness
             except:
                 pass
-        else:
+        else: #print one or more single individual(s)
             for individual in old:
                 try:
                     fit = individual.fitness.values
@@ -145,29 +128,28 @@ def is_interactive():
 creator.create("FitnessMulti", base.Fitness, weights=(numpy.concatenate((numpy.ones(outputRegisters+1), numpy.negative(numpy.ones(outputRegisters))), axis=0).tolist()))
 creator.create("Individual", numpy.ndarray, fitness=creator.FitnessMulti)
 
-
-# In[5]:
-
 minAttributeIndex = 0 # lowest value in zero indexed array of values
 maxRegistryIndex = numpy.shape(dataset)[1] - 2 + outputRegisters # = numInputAttributes - target, and zero indexed + outputRegisters
 maxOperatorIndex = 3 # op is {0,1,2,3} mul,add,sub,div
 
-def initIndividual(cr8tr, initialSizeOfIndividual):
-    return cr8tr([random.randint(minAttributeIndex, maxRegistryIndex), random.randint(minAttributeIndex, maxOperatorIndex), random.randint(minAttributeIndex, maxRegistryIndex)] for _ in range(initialSizeOfIndividual))
+def initIndividual(cr8tr, sizeOfIndividual):
+    return cr8tr([random.randint(minAttributeIndex, maxRegistryIndex), random.randint(minAttributeIndex, maxOperatorIndex), random.randint(minAttributeIndex, maxRegistryIndex)] for _ in range(sizeOfIndividual))
 
 toolbox = base.Toolbox()
-toolbox.register("individual", initIndividual, creator.Individual, initialSizeOfIndividual)
+toolbox.register("individual", initIndividual, creator.Individual, sizeOfIndividual)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 
-# In[6]:
+# In[5]:
 
 def evaluate(individual, dataset=train):
-    result = numpy.zeros(outputRegisters*2+1) # +1 for overall accuracy
-    results = numpy.zeros(outputRegisters*2+1) # *2 for tp and fp
+    result  = numpy.zeros(outputRegisters*2+1) # *2 for tp and fp +1 for overall accuracy
+    results = numpy.zeros(outputRegisters*2+1) # 
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
+        
+        #TODO implement intron filtering and count real program length
         
         for row in dataset:
             r = numpy.concatenate((numpy.zeros(outputRegisters), row), axis=0)
@@ -180,6 +162,8 @@ def evaluate(individual, dataset=train):
                     try:      r[x] = r[x] / r[y] 
                     except: continue #leave r[x] alone if divide by zero
 
+            #TODO use unique correct prediction ratio and program length as only two fitness measures
+            
             predicted = numpy.argmax(r[:outputRegisters])+1
             result[0]  += 1 if predicted == target else 0
             results[0] += 1
@@ -188,74 +172,28 @@ def evaluate(individual, dataset=train):
             result[predicted+outputRegisters] += 1 if predicted != target else 0
             results[target+outputRegisters] += 1
         
-#     if DEBUG: print result, ' / ', results
-    
     return (result/results).tolist() #must return iterable tuple
 
-def cxTwoPointMatrix(ind1, ind2):
-    #exchange lines of instructions between ind1 and ind2
-    #based on http://deap.readthedocs.org/en/master/examples/ga_onemax_numpy.html
-    
-    pt1, pt2 = [random.randint(0, len(ind1)-1) for _ in range(2)]
-    if pt2 == pt1:
-        pt2 += 1
-    elif pt2 < pt1: # Swap the two cx points
-        pt1, pt2 = pt2, pt1
-        
-    if DEBUG: print pt1, ':', pt2
-    ind1[pt1:pt2], ind2[pt1:pt2] = ind2[pt1:pt2].copy(), ind1[pt1:pt2].copy()
-    result = ind1, ind2
-    
-    # crossing over different lengths of individuals led to programatic issues with numpy.ndarrays
-#     pt3, pt4 = [random.randint(0, len(ind2)-1) for _ in range(2)]
-#     if pt4 == pt3:
-#         pt4 += 1
-#     elif pt4 < pt3: # Swap the two cx points
-#         pt3, pt4 = pt4, pt3
-
-#     if DEBUG: print pt1, ':', pt2, '<->',pt3, ':', pt4
-    
-#     chunk1, chunk2 = ind1[pt1:pt2].copy(), ind2[pt3:pt4].copy()
-        
-#     mask = numpy.ones(len(ind1), dtype=bool)
-#     mask[pt1:pt2] = False
-#     newind1 = ind1[mask].copy() #lose reference to object
-
-#     mask = numpy.ones(len(ind2), dtype=bool)
-#     mask[pt3:pt4] = False
-#     newind2 = ind2[mask].copy() #lose reference to object
-    
-#     newind1 = numpy.insert(newind1, pt1, chunk2, 0)
-#     newind2 = numpy.insert(newind2, pt3, chunk1, 0)
-    
-#     newind1 = creator.Individual(newind1)
-#     newind2 = creator.Individual(newind2)
-    
-#     result = newind1 if len(newind1) <= maxSizeOfIndividual else ind1, \
-#         newind2 if len(newind2) <= maxSizeOfIndividual else ind2
-    
-    return result
-
 def mutateMatrix(ind, low, up, indpb, up1=None):
+    global mutations
     if up1==None: up1 = up
+    
     for row in ind:
         if random.random() < indpb:
             for i in range(len(row)):
                 if random.random() < indpb:
+                    mutations += 1
+                    #TODO increment to next register/operator instead of randomly picking a new one
                     if i==1: row[i] = random.randint(low, up1) #op
                     else:    row[i] = random.randint(low, up)  #Rx, Ry
     return ind,
 
-toolbox.register("mate", cxTwoPointMatrix)
 toolbox.register("mutate", mutateMatrix, low=minAttributeIndex, up=maxRegistryIndex, indpb=mutationProb, up1=maxOperatorIndex)
-if selection is 'tournament':
-    toolbox.register("select", tools.selTournament, tournsize=populationSize)
-elif selection is 'proportional':
-    toolbox.register("select", tools.selRoulette)
+toolbox.register("select", tools.selRoulette)
 toolbox.register("evaluate", evaluate)
 
 
-# In[7]:
+# In[6]:
 
 # build population and do initial evaluation
 pop = toolbox.population(n=populationSize)
@@ -266,67 +204,29 @@ for ind, fit in zip(pop, map(toolbox.evaluate, pop)):
 hof = tools.HallOfFame(1, similar=numpy.array_equal)
 hof.update(pop)
 
-print 'dataset\tpop\tcxPb\tmuPb\tgens\tselection\tre'
-print filename, '\t', populationSize, '\t', crossoverProb, '\t', mutationProb, '\t', generations, '\t', selection, '\t', replaced
-
-
-# In[ ]:
-
-crossovers = 0
 mutations = 0
-startTime = time.time()
 lastHof = None
-CURSOR_UP_ONE = '\x1b[1A'
-ERASE_LINE = '\x1b[2K'
-for g in range(generations):
 
-    offspring = None
-    modified  = None
-    if selection is 'tournament':
-        offspring = toolbox.select(pop, k=4)
-        modified  = map(toolbox.clone, tools.selBest(offspring, k=replaced))
-    elif selection is 'proportional':
-        offspring = map(toolbox.clone, toolbox.select(pop, k=replaced))
-        random.shuffle(offspring)
-        modified = offspring
 
-    # Apply crossover on some of the offspring
-#     newmodified = [] #required when new individuals created from different length crossovers
-    for child1, child2 in zip(modified[::2], modified[1::2]):
-        if random.random() < crossoverProb:
-            crossovers +=2
-            child1, child2 = toolbox.mate(child1, child2)
-            del child1.fitness.values
-            del child2.fitness.values
-            
-#         newmodified.append(child1)
-#         newmodified.append(child2)
-        
-#     modified = newmodified
+# In[7]:
+
+def evolve(generation, pop, hof, lastHof):
+    if DEBUG: popcopy = [c.copy() for c in pop]
+    
+    offspring = toolbox.select(pop, k=replaced)
+    random.shuffle(offspring)
 
     # Apply mutation on some of the offspring
-    for mutant in modified:
+    for mutant in offspring:
         if random.random() < mutationProb:
-            mutations +=1
             toolbox.mutate(mutant)
             del mutant.fitness.values
-            
+
     # Evaluate modified offspring (the individuals with an invalid(deleted) fitness)
-    invalid_ind = [ind for ind in modified if not ind.fitness.valid]
+    invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
     fitnesses = map(toolbox.evaluate, invalid_ind)
     for ind, fit in zip(invalid_ind, fitnesses):
         ind.fitness.values = fit
-
-    # Add offspring back into population based on selection policy
-    if DEBUG: popcopy = [c.copy() for c in pop]
-    
-    if selection is 'tournament':
-        worst = tools.selWorst(offspring, 2)
-        worst[0][:] = modified[0][:]
-        worst[1][:] = modified[1][:]
-            
-    elif selection is 'proportional':
-        pop[:] = offspring
             
     if DEBUG:
         print 'population diff'
@@ -336,19 +236,30 @@ for g in range(generations):
         
     hof.update(pop)
     
-    if (hof[0].fitness.values[0] > 0.6 and hof[0] is not lastHof):
-        lastHof = hof[0]
-        trainVsTest(hof)
-        print 'generation',g
+    if hof[0].fitness.values[0] > 0.6:
+        if lastHof==None:
+            lastHof = hof[0]
+            trainVsTest(hof)
+            print 'generation',generation
+        elif hof[0].fitness.values[0] > lastHof.fitness.values[0]:
+            lastHof = hof[0]
+            trainVsTest(hof)
+            print 'generation',generation
     
-    if not is_interactive(): print CURSOR_UP_ONE + ERASE_LINE, 'generation:',g
+    return pop, hof, lastHof
 
-# end for loop
+
+# In[ ]:
+
+startTime = time.time()
+for generation in range(generations):
+    pop, hof, lastHof = evolve(generation, pop, hof, lastHof)
+
 endTime = time.time()
 runTime = (endTime - startTime)
 
-print "\nexec time\tcrossovers\tmutations"
-print '%0.2f' % runTime, '\t', crossovers,'\t', mutations,'\t'
+print "\ndataset\tpop\tmuPb\tgens\tselection\tre\texec time\tmutations"
+print filename, '\t', populationSize,  '\t', mutationProb, '\t', generations,     '\t', selection, '\t', replaced,'%0.2f' % runTime, '\t', mutations
 
 
 # In[ ]:
