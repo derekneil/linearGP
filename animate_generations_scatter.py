@@ -1,12 +1,12 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import warnings; 
+with warnings.catch_warnings(): 
+    warnings.simplefilter("ignore"); 
+    import matplotlib.pyplot as plt
 from  matplotlib.animation import FuncAnimation
 
 generations    = 100
 populationSize = 50
-
-fig, ax = plt.subplots(frameon=False)
-ax.set_xlim(0,1), ax.set_ylim(0,1)
 
 BLK = (0, 0, 0, 1)
 BLU = (0, 0, 1, 1)
@@ -16,15 +16,22 @@ RED = (1, 0, 0, 1)
 MGT = (1, 0, 1, 1)
 YEL = (1, 1, 0, 1)
 
+
+fig, ax = plt.subplots(frameon=False)
+ax.set_xlim(0,1), ax.set_ylim(0,1)
+ax.set_xlabel('F1')
+ax.set_ylabel('F2')
+scat = ax.scatter(x=[], y=[], s=1, lw=5)
+
+def getData():
+    return np.random.uniform(0, 1, (populationSize, 2))
+
+
 data = np.zeros(populationSize, dtype=[('fitnessValues', float, 2), ('color', float, 4)])
-
-scat = ax.scatter(x=data['fitnessValues'][:,0], y=data['fitnessValues'][:,1], \
-                  s=1, lw=5, edgecolors=data['color'])
-
 def update(g):
 
     #get your real data here
-    data['fitnessValues'] = np.random.uniform(0, 1, (populationSize, 2))
+    data['fitnessValues'] = getData()
     
     #adjust color based on data
     for i, d in zip(range(populationSize), data['fitnessValues']):
@@ -39,5 +46,8 @@ def update(g):
     scat.set_offsets(    data['fitnessValues'] )
     scat.set_edgecolors( data['color'] )
 
-animation = FuncAnimation(fig, update, generations, interval=1000, repeat=False)
+    ax.set_title('Fitness gen: %6d / %d' %(g,generations) )
+
+
+animation = FuncAnimation(fig, update, generations, interval=100, repeat=False)
 plt.show()
