@@ -10,6 +10,12 @@ import warnings
 import sys
 import time
 from numpy import genfromtxt
+import numpy as np
+import warnings; 
+with warnings.catch_warnings(): 
+    warnings.simplefilter("ignore"); 
+    import matplotlib.pyplot as plt
+from  matplotlib.animation import FuncAnimation
 
 DEBUG = False
 
@@ -25,7 +31,7 @@ args = len(sys.argv)
 if args >= 2:
     arg = sys.argv[1].lower().strip()
     if arg in 'help usage':
-        print '\tusage: prgm.py [dataset.csv [tourGenerations]]'
+        print '\tusage: prgm.py [dataset.csv [generations]]'
     if '.csv' in arg:
         filename = arg
 if args >= 3:
@@ -44,13 +50,12 @@ outputRegisters = numpy.unique(dataset[:,numpy.size(dataset[0])-1:].flatten()).s
 # source: http://www.bhyuu.com/numpy-how-to-split-partition-a-dataset
 # -array-into-training-and-test-datasets-for-e-g-cross-validation/
 def get_train_test_inds(y,train=0.8):
-    '''Generates indices, making random stratified split into training set and testing sets
-    with proportions 'train' and (1-train) of initial sample.
+    '''Generates indices, making random stratified split into training set 
+    and testing sets with proportions 'train' and (1-train) of initial sample.
     y is any iterable indicating classes of each observation in the sample.
     Initial proportions of classes inside training and 
     testing sets are preserved (stratified sampling).
     '''
-
     y=numpy.array(y)
     train_inds = numpy.zeros(len(y),dtype=bool)
     test_inds = numpy.zeros(len(y),dtype=bool)
@@ -125,7 +130,8 @@ def is_interactive():
 
 # In[4]:
 
-creator.create("FitnessMulti", base.Fitness, weights=(numpy.concatenate((numpy.ones(outputRegisters+1), numpy.negative(numpy.ones(outputRegisters))), axis=0).tolist()))
+fitnessMeasures = 2 #tp and fp per class
+creator.create("FitnessMulti", base.Fitness, weights=(numpy.concatenate((numpy.ones(fitnessMeasures/2), numpy.negative(numpy.ones(fitnessMeasures/2))), axis=0).tolist()))
 creator.create("Individual", numpy.ndarray, fitness=creator.FitnessMulti)
 
 minAttributeIndex = 0 # lowest value in zero indexed array of values
@@ -142,19 +148,26 @@ toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 # In[5]:
 
+def removeIntrons(individual):
+    reducedIndividual = individual.copy()
+    
+    #TODO implement intron filtering and count real program length
+    
+    return reducedIndividual
+
 def evaluate(individual, dataset=train):
-    result  = numpy.zeros(outputRegisters*2+1) # *2 for tp and fp +1 for overall accuracy
-    results = numpy.zeros(outputRegisters*2+1) # 
+    result  = numpy.zeros(fitnessMeasures*outputRegisters)
+    results = numpy.zeros(fitnessMeasures*outputRegisters)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         
-        #TODO implement intron filtering and count real program length
+        reducedIndividual = removeIntrons(individual)
         
         for row in dataset:
             r = numpy.concatenate((numpy.zeros(outputRegisters), row), axis=0)
-            target = row[-1]
-            for x, op, y in individual:
+            target = row[-1] - 1
+            for x, op, y in reducedIndividual:
                 if   op == 0: r[x] = r[x] * r[y]
                 elif op == 1: r[x] = r[x] + r[y]
                 elif op == 2: r[x] = r[x] - r[y]
@@ -164,15 +177,15 @@ def evaluate(individual, dataset=train):
 
             #TODO use unique correct prediction ratio and program length as only two fitness measures
             
-            predicted = numpy.argmax(r[:outputRegisters])+1
-            result[0]  += 1 if predicted == target else 0
-            results[0] += 1
+            predicted = numpy.argmax(r[:outputRegisters]) - 1
+            
             result[predicted] += 1 if predicted == target else 0
             results[target] += 1
             result[predicted+outputRegisters] += 1 if predicted != target else 0
             results[target+outputRegisters] += 1
-        
-    return (result/results).tolist() #must return iterable tuple
+            
+    fitnessPerClass = result/results
+    return numpy.mean(fitnessPerClass.reshape(-1, outputRegisters), axis=1).tolist() #must return iterable tuple
 
 def mutateMatrix(ind, low, up, indpb, up1=None):
     global mutations
@@ -213,21 +226,21 @@ lastHof = None
 def evolve(generation, pop, hof, lastHof):
     if DEBUG: popcopy = [c.copy() for c in pop]
     
-    offspring = toolbox.select(pop, k=replaced)
+    offspring = map(toolbox.clone, toolbox.select(pop, k=replaced))
     random.shuffle(offspring)
 
-    # Apply mutation on some of the offspring
     for mutant in offspring:
         if random.random() < mutationProb:
             toolbox.mutate(mutant)
             del mutant.fitness.values
 
-    # Evaluate modified offspring (the individuals with an invalid(deleted) fitness)
     invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
     fitnesses = map(toolbox.evaluate, invalid_ind)
     for ind, fit in zip(invalid_ind, fitnesses):
         ind.fitness.values = fit
-            
+    
+    pop[:] = offspring
+    
     if DEBUG:
         print 'population diff'
         for i in range(len(pop)):
@@ -239,30 +252,66 @@ def evolve(generation, pop, hof, lastHof):
     if hof[0].fitness.values[0] > 0.6:
         if lastHof==None:
             lastHof = hof[0]
-            trainVsTest(hof)
-            print 'generation',generation
+            if DEBUG:
+                trainVsTest(hof)
+                print 'generation',generation
         elif hof[0].fitness.values[0] > lastHof.fitness.values[0]:
             lastHof = hof[0]
-            trainVsTest(hof)
-            print 'generation',generation
+            if DEBUG:
+                trainVsTest(hof)
+                print 'generation',generation
     
     return pop, hof, lastHof
 
 
-# In[ ]:
+# In[8]:
+
+fig, ax = plt.subplots(frameon=False)
+ax.set_xlim(-0.1,1.1), ax.set_ylim(-0.1,1.1)
+ax.set_xlabel('True Positive')
+ax.set_ylabel('False Positive')
+scat = ax.scatter(x=[], y=[], s=1, lw=5)
+
+BLK = (0, 0, 0, 1)
+BLU = (0, 0, 1, 1)
+GRN = (0, 1, 0, 1)
+CYN = (0, 1, 1, 1)
+RED = (1, 0, 0, 1)
+MGT = (1, 0, 1, 1)
+YEL = (1, 1, 0, 1)
 
 startTime = time.time()
-for generation in range(generations):
+data = np.zeros(populationSize, dtype=[('fitnessValues', float, 2), ('color', float, 4)])
+def update(generation):
+    global pop, hof, lastHof
     pop, hof, lastHof = evolve(generation, pop, hof, lastHof)
+    
+    for i, ind in zip(range(populationSize), pop):
+        data['fitnessValues'][i] = ind.fitness.values
+        prod = data['fitnessValues'][i][0] * data['fitnessValues'][i][1]
+        color = BLK
+        if prod>0.6:
+            color = RED
+        elif prod<0.05:
+            color = MGT
+        data['color'][i] = color
+    
+    scat.set_offsets(    data['fitnessValues'] )
+    scat.set_edgecolors( data['color'] )
 
-endTime = time.time()
-runTime = (endTime - startTime)
+    ax.set_title('Fitness generation: %6d / %d \t\truntime: %.2f seconds' %(generation+1,generations, time.time()-startTime))
 
-print "\ndataset\tpop\tmuPb\tgens\tselection\tre\texec time\tmutations"
-print filename, '\t', populationSize,  '\t', mutationProb, '\t', generations,     '\t', selection, '\t', replaced,'%0.2f' % runTime, '\t', mutations
+animation = FuncAnimation(fig, update, generations, interval=10, repeat=False)
+plt.show()
 
 
-# In[ ]:
+# In[9]:
+
+print "\ndataset\tpop\tmuPb\tgens\tselection\tre\tmutations"
+print filename, '\t', populationSize,  '\t', mutationProb, '\t',     generations,'\t', selection, '\t', replaced,'\t', mutations
+
+
+# In[10]:
 
 print '\nHALL OF FAME'
 print 'size of best individual:', len(hof[0])
