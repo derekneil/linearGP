@@ -16,6 +16,11 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore"); 
     import matplotlib.pyplot as plt
 from  matplotlib.animation import FuncAnimation
+import multiprocessing
+firstImport = True
+
+
+# In[2]:
 
 DEBUG = False
 
@@ -23,9 +28,11 @@ sizeOfIndividual = 25 #lines of Rx = Rx op Ry
 populationSize = 40
 mutationProb = 0.8
 generations = 100
-filename = 'iris_rescaled.csv'
+filename = 'tic-tac-toe_decimal.csv'
 selection = 'proportional'
 replaced = populationSize
+
+processes = 4
 
 args = len(sys.argv)
 if args >= 2:
@@ -45,7 +52,7 @@ dataset = genfromtxt(filename, delimiter=',')
 outputRegisters = numpy.unique(dataset[:,numpy.size(dataset[0])-1:].flatten()).size
 
 
-# In[2]:
+# In[3]:
 
 # source: http://www.bhyuu.com/numpy-how-to-split-partition-a-dataset
 # -array-into-training-and-test-datasets-for-e-g-cross-validation/
@@ -75,7 +82,7 @@ train = dataset[train_inds]
 test  = dataset[test_inds]
 
 
-# In[3]:
+# In[4]:
 
 def trainVsTest(hof):
     print 'train  |  test'
@@ -128,7 +135,7 @@ def is_interactive():
     return not hasattr(main, '__file__')
 
 
-# In[4]:
+# In[5]:
 
 fitnessMeasures = 2 #tp and fp per class
 creator.create("FitnessMulti", base.Fitness, weights=(numpy.concatenate((numpy.ones(fitnessMeasures/2), numpy.negative(numpy.ones(fitnessMeasures/2))), axis=0).tolist()))
@@ -142,11 +149,16 @@ def initIndividual(cr8tr, sizeOfIndividual):
     return cr8tr([random.randint(minAttributeIndex, maxRegistryIndex), random.randint(minAttributeIndex, maxOperatorIndex), random.randint(minAttributeIndex, maxRegistryIndex)] for _ in range(sizeOfIndividual))
 
 toolbox = base.Toolbox()
+
+pool = multiprocessing.Pool(processes)
+#weird issue where this never works on first run of code, only on subsequent runs..??
+if not firstImport: toolbox.register("map", pool.map)
+else: firstImport = False
 toolbox.register("individual", initIndividual, creator.Individual, sizeOfIndividual)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 
-# In[5]:
+# In[6]:
 
 def removeIntrons(individual):
     reducedIndividual = individual.copy()
@@ -166,7 +178,7 @@ def evaluate(individual, dataset=train):
         
         for row in dataset:
             r = numpy.concatenate((numpy.zeros(outputRegisters), row), axis=0)
-            target = row[-1] - 1
+
             for x, op, y in reducedIndividual:
                 if   op == 0: r[x] = r[x] * r[y]
                 elif op == 1: r[x] = r[x] + r[y]
@@ -177,15 +189,20 @@ def evaluate(individual, dataset=train):
 
             #TODO use unique correct prediction ratio and program length as only two fitness measures
             
-            predicted = numpy.argmax(r[:outputRegisters]) - 1
-            
+            target = row[-1] - 1
+            predicted = numpy.argmax(r[:outputRegisters])
             result[predicted] += 1 if predicted == target else 0
             results[target] += 1
             result[predicted+outputRegisters] += 1 if predicted != target else 0
             results[target+outputRegisters] += 1
-            
+    
     fitnessPerClass = result/results
-    return numpy.mean(fitnessPerClass.reshape(-1, outputRegisters), axis=1).tolist() #must return iterable tuple
+    individualFitness = numpy.mean(fitnessPerClass.reshape(-1, outputRegisters), axis=1).tolist()
+    if DEBUG: print result
+    if DEBUG: print results
+    if DEBUG: print fitnessPerClass
+    if DEBUG: print individualFitness
+    return individualFitness #must return iterable tuple
 
 def mutateMatrix(ind, low, up, indpb, up1=None):
     global mutations
@@ -206,7 +223,7 @@ toolbox.register("select", tools.selRoulette)
 toolbox.register("evaluate", evaluate)
 
 
-# In[6]:
+# In[7]:
 
 # build population and do initial evaluation
 pop = toolbox.population(n=populationSize)
@@ -221,12 +238,12 @@ mutations = 0
 lastHof = None
 
 
-# In[7]:
+# In[8]:
 
 def evolve(generation, pop, hof, lastHof):
     if DEBUG: popcopy = [c.copy() for c in pop]
     
-    offspring = map(toolbox.clone, toolbox.select(pop, k=replaced))
+    offspring = toolbox.map(toolbox.clone, toolbox.select(pop, k=replaced))
     random.shuffle(offspring)
 
     for mutant in offspring:
@@ -235,7 +252,7 @@ def evolve(generation, pop, hof, lastHof):
             del mutant.fitness.values
 
     invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-    fitnesses = map(toolbox.evaluate, invalid_ind)
+    fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
     for ind, fit in zip(invalid_ind, fitnesses):
         ind.fitness.values = fit
     
@@ -264,7 +281,7 @@ def evolve(generation, pop, hof, lastHof):
     return pop, hof, lastHof
 
 
-# In[8]:
+# In[ ]:
 
 fig, ax = plt.subplots(frameon=False)
 ax.set_xlim(-0.1,1.1), ax.set_ylim(-0.1,1.1)
@@ -288,30 +305,31 @@ def update(generation):
     
     for i, ind in zip(range(populationSize), pop):
         data['fitnessValues'][i] = ind.fitness.values
-        prod = data['fitnessValues'][i][0] * data['fitnessValues'][i][1]
+        tp = data['fitnessValues'][i][0]
+        fp = data['fitnessValues'][i][1]
         color = BLK
-        if prod>0.6:
+        if tp>0.5:
+            color = BLU
+        if fp>0.5:
             color = RED
-        elif prod<0.05:
-            color = MGT
         data['color'][i] = color
     
     scat.set_offsets(    data['fitnessValues'] )
     scat.set_edgecolors( data['color'] )
 
-    ax.set_title('Fitness generation: %6d / %d \t\truntime: %.2f seconds' %(generation+1,generations, time.time()-startTime))
+    ax.set_title(filename+' Population Fitness on '+`processes`+' processes\ngeneration: %6d / %d \t\truntime: %.2f seconds' %(generation+1,generations, time.time()-startTime))
 
-animation = FuncAnimation(fig, update, generations, interval=10, repeat=False)
+animation = FuncAnimation(fig, update, generations, interval=1, repeat=False)
 plt.show()
 
 
-# In[9]:
+# In[ ]:
 
 print "\ndataset\tpop\tmuPb\tgens\tselection\tre\tmutations"
-print filename, '\t', populationSize,  '\t', mutationProb, '\t',     generations,'\t', selection, '\t', replaced,'\t', mutations
+print filename, '\t', populationSize, '\t', mutationProb, '\t',     generations,'\t', selection, '\t', replaced,'\t', mutations
 
 
-# In[10]:
+# In[ ]:
 
 print '\nHALL OF FAME'
 print 'size of best individual:', len(hof[0])
