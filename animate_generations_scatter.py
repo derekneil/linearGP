@@ -23,8 +23,8 @@ ax.set_xlabel('F1')
 ax.set_ylabel('F2')
 scat = ax.scatter(x=[], y=[], s=1, lw=5)
 
-def getData():
-    return np.random.uniform(0, 1, (populationSize, 2))
+def getData():                # F1                          #F2
+    return [np.random.uniform(0, 0.25), np.random.uniform(0.75, 1)]
 
 
 data = np.zeros(populationSize, dtype=[('fitnessValues', float, 2), ('color', float, 4)])
