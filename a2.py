@@ -25,20 +25,22 @@ firstImport = True
 DEBUG = False
 
 sizeOfIndividual = 25 #lines of Rx = Rx op Ry
-populationSize = 40
+populationSize = 2 if DEBUG else 40
 mutationProb = 0.8
-generations = 100
+generations = 1 if DEBUG else 100
 filename = 'tic-tac-toe_decimal.csv'
-selection = 'proportional'
 replaced = populationSize
+dominance = 'RANK'
+# dominance = 'COUNT'
 
 processes = 4
+interval = 2000 if DEBUG else 1
 
 args = len(sys.argv)
 if args >= 2:
     arg = sys.argv[1].lower().strip()
     if arg in 'help usage':
-        print '\tusage: prgm.py [dataset.csv [generations]]'
+        print '\tusage: prgm.py [dataset.csv [generations [RANK/COUNT]]]'
     if '.csv' in arg:
         filename = arg
 if args >= 3:
@@ -47,6 +49,12 @@ if args >= 3:
         generations = int(arg)
     except:
         pass
+if args >= 4:
+    arg = sys.argv[4]
+    if arg in 'COUNT':
+        dominance = 'COUNT'
+    else:
+        dominance = 'RANK'
 
 dataset = genfromtxt(filename, delimiter=',')
 outputRegisters = numpy.unique(dataset[:,numpy.size(dataset[0])-1:].flatten()).size
@@ -152,8 +160,12 @@ toolbox = base.Toolbox()
 
 pool = multiprocessing.Pool(processes)
 #weird issue where this never works on first run of code, only on subsequent runs..??
-if not firstImport: toolbox.register("map", pool.map)
-else: firstImport = False
+if firstImport:
+    firstImport = False
+    processes = 1
+else: 
+    toolbox.register("map", pool.map)
+    processes = 4
 toolbox.register("individual", initIndividual, creator.Individual, sizeOfIndividual)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
@@ -227,7 +239,7 @@ toolbox.register("evaluate", evaluate)
 
 # build population and do initial evaluation
 pop = toolbox.population(n=populationSize)
-for ind, fit in zip(pop, map(toolbox.evaluate, pop)):
+for ind, fit in zip(pop, toolbox.map(toolbox.evaluate, pop)):
     ind.fitness.values = fit
 
 # track best individual
@@ -238,13 +250,51 @@ mutations = 0
 lastHof = None
 
 
-# In[8]:
+# In[ ]:
+
+def ndEQ(a,b):
+    return numpy.all((a==b).flatten())
+
+def getDominance(pop):
+    paretoDominance = numpy.zeros(shape=len(pop),dtype=int)
+    for i, a in enumerate(pop):
+        for j, b in enumerate(pop):
+            if i!=j:
+                if dominance in 'RANK':
+                    paretoDominance[i] += 1 if b.fitness.dominates(a.fitness) else 0
+                elif dominance in 'COUNT':
+                    paretoDominance[i] += 1 if a.fitness.dominates(b.fitness) else 0
+                else:
+                    raise NameError('you idiot')
+    return paretoDominance
+
+def getTopPareto(pop, offspring, n):
+    pop.extend(offspring)
+    
+    pareto = getDominance(pop)
+    if DEBUG: print 'pareto',dominance , pareto
+    
+    indicies = []
+    if dominance in 'RANK':
+        indicies = numpy.argsort(pareto)[:n]
+    elif dominance in 'COUNT':
+        indicies = numpy.argsort(pareto)[::-1][:n]
+    else:
+        raise NameError('you idiot')
+    
+    newPop = []
+    if DEBUG: print 'sorted pareto',dominance, pareto[indicies]
+    if DEBUG: print 'indicies', indicies
+    if DEBUG: print'----------------'
+    for i in indicies:
+        newPop.append(pop[i])
+        
+    return newPop
 
 def evolve(generation, pop, hof, lastHof):
-    if DEBUG: popcopy = [c.copy() for c in pop]
+    if DEBUG: popcopy = toolbox.map(toolbox.clone, pop)
     
-    offspring = toolbox.map(toolbox.clone, toolbox.select(pop, k=replaced))
-    random.shuffle(offspring)
+    offspring = toolbox.map(toolbox.clone, pop)
 
     for mutant in offspring:
         if random.random() < mutationProb:
@@ -256,7 +306,7 @@ def evolve(generation, pop, hof, lastHof):
     for ind, fit in zip(invalid_ind, fitnesses):
         ind.fitness.values = fit
     
-    pop[:] = offspring
+    pop[:] = getTopPareto(pop, offspring, populationSize)
     
     if DEBUG:
         print 'population diff'
@@ -298,35 +348,35 @@ MGT = (1, 0, 1, 1)
 YEL = (1, 1, 0, 1)
 
 startTime = time.time()
-data = np.zeros(populationSize, dtype=[('fitnessValues', float, 2), ('color', float, 4)])
 def update(generation):
     global pop, hof, lastHof
     pop, hof, lastHof = evolve(generation, pop, hof, lastHof)
     
-    for i, ind in zip(range(populationSize), pop):
-        data['fitnessValues'][i] = ind.fitness.values
-        tp = data['fitnessValues'][i][0]
-        fp = data['fitnessValues'][i][1]
-        color = BLK
-        if tp>0.5:
-            color = BLU
-        if fp>0.5:
-            color = RED
-        data['color'][i] = color
+    paretoFront = tools.ParetoFront(ndEQ)
+    paretoFront.update(pop)
     
-    scat.set_offsets(    data['fitnessValues'] )
+    data = np.zeros(populationSize+len(paretoFront), dtype=[('coordinates', float, 2), ('color', float, 4)])
+    for i, ind in zip(range(populationSize), pop):
+        data['coordinates'][i] = ind.fitness.values
+        data['color'][i] = BLK
+    
+    for i, ind in enumerate(paretoFront):
+        data['coordinates'][populationSize+i] = ind.fitness.values
+        data['color'][populationSize+i] = RED
+    
+    scat.set_offsets(    data['coordinates'] )
     scat.set_edgecolors( data['color'] )
 
-    ax.set_title(filename+' Population Fitness on '+`processes`+' processes\ngeneration: %6d / %d \t\truntime: %.2f seconds' %(generation+1,generations, time.time()-startTime))
+    ax.set_title(filename+' Population Fitness on '+`processes`+                  ' processes\ngeneration: %6d / %d \t\truntime: %.2f seconds'                  %(generation+1,generations, time.time()-startTime))
 
-animation = FuncAnimation(fig, update, generations, interval=1, repeat=False)
+animation = FuncAnimation(fig, update, generations, interval=interval, repeat=False)
 plt.show()
 
 
 # In[ ]:
 
-print "\ndataset\tpop\tmuPb\tgens\tselection\tre\tmutations"
-print filename, '\t', populationSize, '\t', mutationProb, '\t',     generations,'\t', selection, '\t', replaced,'\t', mutations
+print "\ndataset\tpop\tmuPb\tgens\tre\tmutations"
+print filename, '\t', populationSize, '\t', mutationProb, '\t',     generations,'\t', replaced,'\t', mutations
 
 
 # In[ ]:
