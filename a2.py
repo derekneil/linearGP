@@ -26,10 +26,9 @@ DEBUG = False
 
 sizeOfIndividual = 25 #lines of Rx = Rx op Ry
 populationSize = 2 if DEBUG else 40
-mutationProb = 0.8
+mutationProb = 0.95
 generations = 1 if DEBUG else 100
 filename = 'tic-tac-toe_decimal.csv'
-replaced = populationSize
 dominance = 'RANK'
 # dominance = 'COUNT'
 
@@ -166,6 +165,7 @@ if firstImport:
 else: 
     toolbox.register("map", pool.map)
     processes = 4
+
 toolbox.register("individual", initIndividual, creator.Individual, sizeOfIndividual)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
@@ -199,8 +199,6 @@ def evaluate(individual, dataset=train):
                     try:      r[x] = r[x] / r[y] 
                     except: continue #leave r[x] alone if divide by zero
 
-            #TODO use unique correct prediction ratio and program length as only two fitness measures
-            
             target = row[-1] - 1
             predicted = numpy.argmax(r[:outputRegisters])
             result[predicted] += 1 if predicted == target else 0
@@ -237,7 +235,6 @@ toolbox.register("evaluate", evaluate)
 
 # In[7]:
 
-# build population and do initial evaluation
 pop = toolbox.population(n=populationSize)
 for ind, fit in zip(pop, toolbox.map(toolbox.evaluate, pop)):
     ind.fitness.values = fit
@@ -252,10 +249,10 @@ lastHof = None
 
 # In[ ]:
 
-def ndEQ(a,b):
+def ndEQ(a,b): #required for comparing matrix individuals with DEAP's ParetoFront hallOfFrame
     return numpy.all((a==b).flatten())
 
-def getDominance(pop):
+def getDominanceValues(pop):
     paretoDominance = numpy.zeros(shape=len(pop),dtype=int)
     for i, a in enumerate(pop):
         for j, b in enumerate(pop):
@@ -271,7 +268,7 @@ def getDominance(pop):
 def getTopPareto(pop, offspring, n):
     pop.extend(offspring)
     
-    pareto = getDominance(pop)
+    pareto = getDominanceValues(pop)
     if DEBUG: print 'pareto',dominance , pareto
     
     indicies = []
@@ -354,8 +351,9 @@ def update(generation):
     
     paretoFront = tools.ParetoFront(ndEQ)
     paretoFront.update(pop)
+    paretoFrontSize = len(paretoFront)
     
-    data = np.zeros(populationSize+len(paretoFront), dtype=[('coordinates', float, 2), ('color', float, 4)])
+    data = np.zeros(populationSize+paretoFrontSize, dtype=[('coordinates', float, 2), ('color', float, 4)])
     for i, ind in zip(range(populationSize), pop):
         data['coordinates'][i] = ind.fitness.values
         data['color'][i] = BLK
@@ -367,19 +365,10 @@ def update(generation):
     scat.set_offsets(    data['coordinates'] )
     scat.set_edgecolors( data['color'] )
 
-    ax.set_title(filename+' Population Fitness on '+`processes`+                  ' processes\ngeneration: %6d / %d \t\truntime: %.2f seconds'                  %(generation+1,generations, time.time()-startTime))
+    ax.set_title('data:'+filename[:5]+' Pareto '+dominance+' front: %d/%d on %d processes\ngen: %3d /%d  mu(%.2f): %d in %.2f seconds'                  %(paretoFrontSize, populationSize, processes, generation+1, generations, mutationProb, mutations, time.time()-startTime))
 
 animation = FuncAnimation(fig, update, generations, interval=interval, repeat=False)
 plt.show()
-
-
-# In[ ]:
-
-print "\ndataset\tpop\tmuPb\tgens\tre\tmutations"
-print filename, '\t', populationSize, '\t', mutationProb, '\t',     generations,'\t', replaced,'\t', mutations
-
-
-# In[ ]:
 
 print '\nHALL OF FAME'
 print 'size of best individual:', len(hof[0])
