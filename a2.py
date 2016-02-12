@@ -201,7 +201,7 @@ def evaluate(individual, dataset=train):
         reducedIndividual = removeIntrons(individual)
         
         for row in dataset:
-            r = numpy.concatenate((numpy.zeros(outputRegisters), row), axis=0)
+            r = numpy.concatenate((numpy.negative(numpy.ones(outputRegisters)), row), axis=0)
 
             for x, op, y in reducedIndividual:
                 if   op == 0: r[x] = r[x] * r[y]
