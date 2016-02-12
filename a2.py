@@ -175,9 +175,19 @@ toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 # In[6]:
 
 def removeIntrons(individual):
-    reducedIndividual = individual.copy()
+    variables = set(range(outputRegisters))
     
-    #TODO implement intron filtering and count real program length
+    lastLine = len(individual)
+    for x,op,y in reversed(individual):
+        if x in variables:
+            variables.add(y)
+        if len(variables)==outputRegisters:
+            lastLine -=1 
+    
+    reducedIndividual = []
+    for i, row in enumerate(individual):
+        if i<lastLine and row[0] in variables:
+            reducedIndividual.append(row[:])
     
     return reducedIndividual
 
