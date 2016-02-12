@@ -29,7 +29,7 @@ populationSize = 2 if DEBUG else 40
 mutationProb = 0.95
 generations = 10 if DEBUG else 100
 filename = 'tic-tac-toe_decimal.csv'
-filename = 'iris_rescaled.csv'
+# filename = 'iris_rescaled.csv'
 dominance = 'RANK'
 # dominance = 'COUNT'
 
@@ -150,15 +150,15 @@ def show(old, new=None): #debugging/output worker function
 # In[5]:
 
 fitnessMeasures = 2 #tp and fp per class
-creator.create("FitnessMulti", base.Fitness, weights=(numpy.concatenate((numpy.ones(fitnessMeasures/2), numpy.negative(numpy.ones(fitnessMeasures/2))), axis=0).tolist()))
+creator.create("FitnessMulti", base.Fitness,                weights=(numpy.concatenate((numpy.ones(fitnessMeasures/2),                                           numpy.negative(numpy.ones(fitnessMeasures/2))),                                          axis=0).tolist()))
 creator.create("Individual", numpy.ndarray, fitness=creator.FitnessMulti)
 
 minAttributeIndex = 0 # lowest value in zero indexed array of values
-maxRegistryIndex = numpy.shape(dataset)[1] - 2 + outputRegisters # = numInputAttributes - target, and zero indexed + outputRegisters
+maxRegistryIndex = numpy.shape(dataset)[1] - 2 + outputRegisters # = row - (outpus + zero indexed) + outputRegisters
 maxOperatorIndex = 3 # op is {0,1,2,3} mul,add,sub,div
 
 def initIndividual(cr8tr, sizeOfIndividual):
-    return cr8tr([random.randint(minAttributeIndex, maxRegistryIndex), random.randint(minAttributeIndex, maxOperatorIndex), random.randint(minAttributeIndex, maxRegistryIndex)] for _ in range(sizeOfIndividual))
+    return cr8tr([random.randint(minAttributeIndex, maxRegistryIndex),                   random.randint(minAttributeIndex, maxOperatorIndex),                   random.randint(minAttributeIndex, maxRegistryIndex)] for _ in range(sizeOfIndividual))
 
 toolbox = base.Toolbox()
 
@@ -223,8 +223,6 @@ def evaluate(individual, dataset=train):
     
     fitnessPerClass = result/results
     individualFitness = numpy.mean(fitnessPerClass.reshape(-1, outputRegisters), axis=1).tolist()
-#     if DEBUG: print result
-#     if DEBUG: print results
     if DEBUG: print 'fitnessPerClass', fitnessPerClass
     if DEBUG: print 'individualFitness', individualFitness
     return individualFitness #must return iterable tuple
@@ -254,7 +252,7 @@ pop = toolbox.population(n=populationSize)
 for ind, fit in zip(pop, toolbox.map(toolbox.evaluate, pop)):
     ind.fitness.values = fit
 
-# track best individual
+# track best individual across generations
 hof = tools.HallOfFame(1, similar=numpy.array_equal)
 hof.update(pop)
 
@@ -336,7 +334,7 @@ def evolve(generation, pop, hof, lastHof):
     return pop, hof, lastHof
 
 
-# In[9]:
+# In[ ]:
 
 fig, ax = plt.subplots(frameon=False)
 ax.set_xlim(-0.1,1.1), ax.set_ylim(-0.1,1.1)
