@@ -29,7 +29,7 @@ populationSize = 2 if DEBUG else 40
 mutationProb = 0.95
 generations = 10 if DEBUG else 100
 filename = 'tic-tac-toe_decimal.csv'
-# filename = 'iris_rescaled.csv'
+filename = 'iris_rescaled.csv'
 dominance = 'RANK'
 # dominance = 'COUNT'
 
@@ -97,11 +97,14 @@ test  = dataset[test_inds]
 
 # In[4]:
 
-def trainVsTest(hof):
+def trainVsTest(ind):
+    ind = creator.Individual(removeIntrons(ind))
+    ind.fitness.values = toolbox.evaluate(ind, test)
+    print 'size of best individual:', len(ind)
     print 'train  |  test'
-    testHof = creator.Individual(hof[0].copy())
+    testHof = creator.Individual(ind.copy())
     testHof.fitness.values = toolbox.evaluate(testHof, test)
-    show(hof[0], testHof)
+    show(ind, testHof)
 
 def show(old, new=None): #debugging/output worker function
     with warnings.catch_warnings():
@@ -259,7 +262,7 @@ mutations = 0
 lastHof = None
 
 
-# In[ ]:
+# In[8]:
 
 def ndEQ(a,b): #required for comparing matrix individuals with DEAP's ParetoFront hallOfFrame
     return numpy.all((a==b).flatten())
@@ -322,18 +325,18 @@ def evolve(generation, pop, hof, lastHof):
         if lastHof==None:
             lastHof = hof[0]
             if DEBUG:
-                trainVsTest(hof)
+                trainVsTest(hof[0])
                 print 'generation',generation
         elif hof[0].fitness.values[0] > lastHof.fitness.values[0]:
             lastHof = hof[0]
             if DEBUG:
-                trainVsTest(hof)
+                trainVsTest(hof[0])
                 print 'generation',generation
     
     return pop, hof, lastHof
 
 
-# In[ ]:
+# In[9]:
 
 fig, ax = plt.subplots(frameon=False)
 ax.set_xlim(-0.1,1.1), ax.set_ylim(-0.1,1.1)
@@ -342,12 +345,7 @@ ax.set_ylabel('False Positive')
 scat = ax.scatter(x=[], y=[], s=1, lw=5)
 
 BLK = (0, 0, 0, 1)
-BLU = (0, 0, 1, 1)
-GRN = (0, 1, 0, 1)
-CYN = (0, 1, 1, 1)
 RED = (1, 0, 0, 1)
-MGT = (1, 0, 1, 1)
-YEL = (1, 1, 0, 1)
 
 paretoFront = tools.ParetoFront(ndEQ)
 startTime = time.time()
@@ -376,9 +374,8 @@ animation = FuncAnimation(fig, update, generations, interval=interval, repeat=Fa
 plt.show()
 
 print '\nHALL OF FAME'
-print 'size of best individual:', len(hof[0])
 
-trainVsTest(hof)
+trainVsTest(hof[0])
 
 
 # In[ ]:
