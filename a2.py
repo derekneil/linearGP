@@ -27,33 +27,39 @@ DEBUG = False
 sizeOfIndividual = 25 #lines of Rx = Rx op Ry
 populationSize = 2 if DEBUG else 40
 mutationProb = 0.95
-generations = 1 if DEBUG else 100
+generations = 10 if DEBUG else 100
 filename = 'tic-tac-toe_decimal.csv'
+# filename = 'iris_rescaled.csv'
 dominance = 'RANK'
 # dominance = 'COUNT'
 
 processes = 4
 interval = 2000 if DEBUG else 1
 
-args = len(sys.argv)
-if args >= 2:
-    arg = sys.argv[1].lower().strip()
-    if arg in 'help usage':
-        print '\tusage: prgm.py [dataset.csv [generations [RANK/COUNT]]]'
-    if '.csv' in arg:
-        filename = arg
-if args >= 3:
-    try:
-        arg = sys.argv[3]
-        generations = int(arg)
-    except:
-        pass
-if args >= 4:
-    arg = sys.argv[4]
-    if arg in 'COUNT':
-        dominance = 'COUNT'
-    else:
-        dominance = 'RANK'
+def is_interactive():
+    import __main__ as main
+    return not hasattr(main, '__file__')
+
+if not is_interactive():
+    args = len(sys.argv)
+    if args >= 2:
+        arg = sys.argv[1].lower().strip()
+        if arg in 'help usage':
+            print '\tusage: prgm.py [dataset.csv [generations [RANK/COUNT]]]'
+        if '.csv' in arg:
+            filename = arg
+    if args >= 3:
+        try:
+            arg = sys.argv[3]
+            generations = int(arg)
+        except:
+            pass
+    if args >= 4:
+        arg = sys.argv[4]
+        if arg in 'COUNT':
+            dominance = 'COUNT'
+        elif arg in 'RANK':
+            dominance = 'RANK'
 
 dataset = genfromtxt(filename, delimiter=',')
 outputRegisters = numpy.unique(dataset[:,numpy.size(dataset[0])-1:].flatten()).size
@@ -137,10 +143,6 @@ def show(old, new=None): #debugging/output worker function
             except:
                 pass
 
-def is_interactive():
-    import __main__ as main
-    return not hasattr(main, '__file__')
-
 
 # In[5]:
 
@@ -208,10 +210,10 @@ def evaluate(individual, dataset=train):
     
     fitnessPerClass = result/results
     individualFitness = numpy.mean(fitnessPerClass.reshape(-1, outputRegisters), axis=1).tolist()
-    if DEBUG: print result
-    if DEBUG: print results
-    if DEBUG: print fitnessPerClass
-    if DEBUG: print individualFitness
+#     if DEBUG: print result
+#     if DEBUG: print results
+    if DEBUG: print 'fitnessPerClass', fitnessPerClass
+    if DEBUG: print 'individualFitness', individualFitness
     return individualFitness #must return iterable tuple
 
 def mutateMatrix(ind, low, up, indpb, up1=None):
@@ -269,20 +271,13 @@ def getTopPareto(pop, offspring, n):
     pop.extend(offspring)
     
     pareto = getDominanceValues(pop)
-    if DEBUG: print 'pareto',dominance , pareto
     
-    indicies = []
-    if dominance in 'RANK':
-        indicies = numpy.argsort(pareto)[:n]
-    elif dominance in 'COUNT':
+    indicies = numpy.argsort(pareto)[:n]
+    if dominance in 'COUNT':
         indicies = numpy.argsort(pareto)[::-1][:n]
-    else:
-        raise NameError('you idiot')
-    
-    newPop = []
     if DEBUG: print 'sorted pareto',dominance, pareto[indicies]
-    if DEBUG: print 'indicies', indicies
-    if DEBUG: print'----------------'
+        
+    newPop = []
     for i in indicies:
         newPop.append(pop[i])
         
@@ -344,17 +339,17 @@ RED = (1, 0, 0, 1)
 MGT = (1, 0, 1, 1)
 YEL = (1, 1, 0, 1)
 
+paretoFront = tools.ParetoFront(ndEQ)
 startTime = time.time()
 def update(generation):
     global pop, hof, lastHof
     pop, hof, lastHof = evolve(generation, pop, hof, lastHof)
     
-    paretoFront = tools.ParetoFront(ndEQ)
     paretoFront.update(pop)
     paretoFrontSize = len(paretoFront)
     
     data = np.zeros(populationSize+paretoFrontSize, dtype=[('coordinates', float, 2), ('color', float, 4)])
-    for i, ind in zip(range(populationSize), pop):
+    for i, ind in enumerate(pop):
         data['coordinates'][i] = ind.fitness.values
         data['color'][i] = BLK
     
