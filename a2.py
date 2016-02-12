@@ -180,17 +180,11 @@ toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 def removeIntrons(individual):
     variables = set(range(outputRegisters))
     
-    lastLine = len(individual)
+    reducedIndividual = []
     for x,op,y in reversed(individual):
         if x in variables:
             variables.add(y)
-        if len(variables)==outputRegisters:
-            lastLine -=1 
-    
-    reducedIndividual = []
-    for i, row in enumerate(individual):
-        if i<lastLine and row[0] in variables:
-            reducedIndividual.append(row[:])
+            reducedIndividual.insert(0, [x,op,y])
     
     return reducedIndividual
 
